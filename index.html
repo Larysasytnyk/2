@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Об'ємний Конвертер</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0b0f19;
+            font-family: Arial, sans-serif;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        .control-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 16px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            color: #fff;
+            z-index: 10;
+            width: 320px;
+        }
+        .control-panel h3 {
+            margin-top: 0;
+            font-size: 18px;
+            color: #818cf8;
+        }
+        .control-panel p {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-bottom: 15px;
+        }
+        .file-input-wrapper input[type="file"] {
+            display: none;
+        }
+        .file-upload-btn {
+            display: block;
+            background: rgba(30, 41, 59, 0.7);
+            border: 2px dashed #6366f1;
+            padding: 16px;
+            text-align: center;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+        .file-upload-btn:hover {
+            background: rgba(51, 65, 85, 0.9);
+        }
+        .slider-container {
+            margin-top: 15px;
+        }
+        .slider-container label {
+            font-size: 12px;
+            color: #cbd5e1;
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        .slider-container input[type="range"] {
+            width: 100%;
+            accent-color: #6366f1;
+        }
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .ui-btn {
+            flex: 1;
+            background-color: #4f46e5;
+            color: #fff;
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+        .ui-btn:hover {
+            background-color: #4338ca;
+        }
+        .status-text {
+            margin-top: 10px;
+            font-size: 11px;
+            color: #94a3b8;
+            word-break: break-all;
+        }
+        .instructions {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #94a3b8;
+            background: rgba(15, 23, 42, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 12px 18px;
+            border-radius: 10px;
+            pointer-events: none;
+            font-size: 13px;
+            line-height: 1.6;
+            backdrop-filter: blur(8px);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="control-panel">
+        <h3>3D Об'ємний Конвертер</h3>
+        <p>Формати: .PNG, .JPG, .SVG</p>
+        
+        <div class="file-input-wrapper">
+            <label class="file-upload-btn">
+                ☁️ Оберіть або перетягніть файл
+                <input type="file" id="imageLoader" accept="image/*">
+            </label>
+        </div>
+
+        <div class="slider-container">
+            <label>Товщина 3D моделі: <span id="depthVal">25</span></label>
+            <input type="range" id="depthSlider" min="5" max="50" value="25">
+        </div>
+
+        <div class="btn-group">
+            <button class="ui-btn" id="export-stl">Скачати .STL</button>
+            <button class="ui-btn" id="export-glb">Скачати .GLB</button>
+        </div>
+
+        <div class="status-text" id="statusText">Очікування файлу...</div>
+    </div>
+
+    <div class="instructions">
+        🖱️ <b>Обертання:</b> затисніть ліву кнопку миші та тягніть<br>
+        ⚙️ <b>Масштабування:</b> коліщатко миші
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <!-- Three.js та експортери -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
+
+    <script>
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0b0f19);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        // Освітлення
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+        dirLight.position.set(10, 20, 15);
+        scene.add(dirLight);
+
+        // Початкова сітка (зникає після завантаження)
+        const gridHelper = new THREE.GridHelper(30, 30, 0x4f46e5, 0x1e293b);
+        gridHelper.position.y = -3;
+        scene.add(gridHelper);
+
+        const modelGroup = new THREE.Group();
+        scene.add(modelGroup);
+
+        let currentImage = null;
+
+        const depthSlider = document.getElementById('depthSlider');
+        const depthVal = document.getElementById('depthVal');
+        depthSlider.addEventListener('input', (e) => {
+            depthVal.innerText = e.target.value;
+            if (currentImage) generateDiscreteVoxels(currentImage);
+        });
+
+        // Побудова ідеальних дискретних кубиків-точок із реальним об'ємом у глибину
+        function generateDiscreteVoxels(img) {
+            while(modelGroup.children.length > 0){ 
+                modelGroup.remove(modelGroup.children[0]); 
+            }
+
+            gridHelper.visible = false; // прибираємо сітку
+
+            const canvas2D = document.createElement('canvas');
+            const ctx = canvas2D.getContext('2d');
+            const res = 50; // Чітка деталізація вокселів
+            canvas2D.width = res;
+            canvas2D.height = res;
+            ctx.drawImage(img, 0, 0, res, res);
+            const imgData = ctx.getImageData(0, 0, res, res).data;
+
+            const maxDepth = parseInt(depthSlider.value);
+            // Робимо кубики трохи меншими з проміжками, щоб чітко бачити структуру точок
+            const boxGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+
+            for (let y = 0; y < res; y++) {
+                for (let x = 0; x < res; x++) {
+                    const i = (y * res + x) * 4;
+                    const r = imgData[i], g = imgData[i+1], b = imgData[i+2], a = imgData[i+3];
+
+                    if (a < 40 || (r > 235 && g > 235 && b > 235)) continue;
+
+                    const hexColor = (r << 16) | (g << 8) | b;
+                    const material = new THREE.MeshStandardMaterial({ 
+                        color: hexColor, 
+                        roughness: 0.35 
+                    });
+
+                    // Кількість шарів у глибину залежить від повзунка товщини
+                    const depthLayers = Math.max(3, Math.floor(maxDepth / 4));
+                    for (let z = 0; z < depthLayers; z++) {
+                        const mesh = new THREE.Mesh(boxGeo, material);
+                        
+                        const posX = (x - res / 2) * 0.11;
+                        const posY = (y - res / 2) * 0.11;
+                        const posZ = (z - depthLayers / 2) * 0.11;
+
+                        mesh.position.set(posX, posY, posZ);
+                        modelGroup.add(mesh);
+                    }
+                }
+            }
+
+            // Рівне нормальне положення
+            modelGroup.rotation.x = 0;
+            modelGroup.rotation.z = 0;
+        }
+
+        document.getElementById('imageLoader').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            document.getElementById('statusText').innerText = 'Готово: ' + file.name;
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    currentImage = img;
+                    generateDiscreteVoxels(img);
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        // Керування камерою
+        let isDragging = false, prevMouse = { x: 0, y: 0 };
+        let radius = 6.0, theta = 0, phi = Math.PI / 3;
+
+        function updateCam() {
+            phi = Math.max(0.1, Math.min(Math.PI - 0.1, phi));
+            camera.position.set(
+                radius * Math.sin(phi) * Math.sin(theta),
+                radius * Math.cos(phi),
+                radius * Math.sin(phi) * Math.cos(theta)
+            );
+            camera.lookAt(0, 0, 0);
+        }
+        updateCam();
+
+        window.addEventListener('mousedown', e => { isDragging = true; prevMouse = { x: e.clientX, y: e.clientY }; });
+        window.addEventListener('mousemove', e => {
+            if (!isDragging) return;
+            theta -= (e.clientX - prevMouse.x) * 0.005;
+            phi -= (e.clientY - prevMouse.y) * 0.005;
+            updateCam();
+            prevMouse = { x: e.clientX, y: e.clientY };
+        });
+        window.addEventListener('mouseup', () => isDragging = false);
+        window.addEventListener('wheel', e => {
+            e.preventDefault();
+            radius = Math.max(2.0, Math.min(15.0, radius + e.deltaY * 0.005));
+            updateCam();
+        }, { passive: false });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Експорт
+        function download(blob, name) {
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = name;
+            link.click();
+        }
+
+        document.getElementById('export-stl').onclick = () => {
+            download(new Blob([new THREE.STLExporter().parse(modelGroup, { binary: true })], { type: 'application/octet-stream' }), 'model.stl');
+        };
+        document.getElementById('export-glb').onclick = () => {
+            new THREE.GLTFExporter().parse(modelGroup, gltf => {
+                download(new Blob([gltf], { type: 'application/octet-stream' }), 'model.glb');
+            }, { binary: true });
+        };
+    </script>
+</body>
+</html>
