@@ -168,7 +168,7 @@
         dirLight.position.set(10, 20, 15);
         scene.add(dirLight);
 
-        // Початкова сітка (зникає після завантаження)
+        // Фонова сітка (як на вашому скріншоті)
         const gridHelper = new THREE.GridHelper(30, 30, 0x4f46e5, 0x1e293b);
         gridHelper.position.y = -3;
         scene.add(gridHelper);
@@ -182,34 +182,33 @@
         const depthVal = document.getElementById('depthVal');
         depthSlider.addEventListener('input', (e) => {
             depthVal.innerText = e.target.value;
-            if (currentImage) generateDiscreteVoxels(currentImage);
+            if (currentImage) generateSolidColumns(currentImage);
         });
 
-        // Побудова ідеальних дискретних кубиків-точок із реальним об'ємом у глибину
-        function generateDiscreteVoxels(img) {
+        // Створення монолітних щільних стовпчиків без дірок і зазорів
+        function generateSolidColumns(img) {
             while(modelGroup.children.length > 0){ 
                 modelGroup.remove(modelGroup.children[0]); 
             }
 
-            gridHelper.visible = false; // прибираємо сітку
+            gridHelper.visible = false; // Прибираємо сітку при завантаженні
 
             const canvas2D = document.createElement('canvas');
             const ctx = canvas2D.getContext('2d');
-            const res = 50; // Чітка деталізація вокселів
+            const res = 45; // Оптимальна роздільна здатність
             canvas2D.width = res;
             canvas2D.height = res;
             ctx.drawImage(img, 0, 0, res, res);
             const imgData = ctx.getImageData(0, 0, res, res).data;
 
             const maxDepth = parseInt(depthSlider.value);
-            // Робимо кубики трохи меншими з проміжками, щоб чітко бачити структуру точок
-            const boxGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
 
             for (let y = 0; y < res; y++) {
                 for (let x = 0; x < res; x++) {
                     const i = (y * res + x) * 4;
                     const r = imgData[i], g = imgData[i+1], b = imgData[i+2], a = imgData[i+3];
 
+                    // Відсікаємо прозорий або білий фон
                     if (a < 40 || (r > 235 && g > 235 && b > 235)) continue;
 
                     const hexColor = (r << 16) | (g << 8) | b;
@@ -218,22 +217,27 @@
                         roughness: 0.35 
                     });
 
-                    // Кількість шарів у глибину залежить від повзунка товщини
-                    const depthLayers = Math.max(3, Math.floor(maxDepth / 4));
-                    for (let z = 0; z < depthLayers; z++) {
-                        const mesh = new THREE.Mesh(boxGeo, material);
-                        
-                        const posX = (x - res / 2) * 0.11;
-                        const posY = (y - res / 2) * 0.11;
-                        const posZ = (z - depthLayers / 2) * 0.11;
+                    // Висота стовпчика залежить від повзунка товщини
+                    const columnHeight = Math.max(0.5, (maxDepth / 10));
+                    
+                    // Створюємо єдиний високий блок-стовпчик для кожного пікселя (без проміжків)
+                    const colGeo = new THREE.BoxGeometry(0.12, 0.12, columnHeight);
+                    const mesh = new THREE.Mesh(colGeo, material);
 
-                        mesh.position.set(posX, posY, posZ);
-                        modelGroup.add(mesh);
-                    }
+                    const posX = (x - res / 2) * 0.12;
+                    const posY = (y - res / 2) * 0.12;
+                    const posZ = columnHeight / 2; // Ставимо на базову площину
+
+                    mesh.position.set(posX, posY, posZ);
+                    
+                    // Повертаємо так, щоб стовпчики рости вертикально вгору правильно
+                    mesh.rotation.x = Math.PI / 2;
+
+                    modelGroup.add(mesh);
                 }
             }
 
-            // Рівне нормальне положення
+            // Рівне нормальне положення (не догори ногами)
             modelGroup.rotation.x = 0;
             modelGroup.rotation.z = 0;
         }
@@ -249,7 +253,7 @@
                 const img = new Image();
                 img.onload = function() {
                     currentImage = img;
-                    generateDiscreteVoxels(img);
+                    generateSolidColumns(img);
                 }
                 img.src = event.target.result;
             }
@@ -258,7 +262,7 @@
 
         // Керування камерою
         let isDragging = false, prevMouse = { x: 0, y: 0 };
-        let radius = 6.0, theta = 0, phi = Math.PI / 3;
+        let radius = 7.0, theta = 0, phi = Math.PI / 3;
 
         function updateCam() {
             phi = Math.max(0.1, Math.min(Math.PI - 0.1, phi));
@@ -282,7 +286,7 @@
         window.addEventListener('mouseup', () => isDragging = false);
         window.addEventListener('wheel', e => {
             e.preventDefault();
-            radius = Math.max(2.0, Math.min(15.0, radius + e.deltaY * 0.005));
+            radius = Math.max(3.0, Math.min(20.0, radius + e.deltaY * 0.005));
             updateCam();
         }, { passive: false });
 
